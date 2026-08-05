@@ -11,15 +11,12 @@ st.title("🤖 Multi-Agent AI Assistant")
 with st.sidebar:
     st.header("Settings")
 
-    model = st.selectbox(
-        "Model",
-        ["GPT-5.5", "GPT-4.1", "Llama 3", "Gemini"]
-    )
-
+    # model = "llama"
+    
     temperature = st.slider(
         "Temperature",
         0.0,
-        2.0,
+        1.0,
         0.7
     )
 
@@ -27,8 +24,10 @@ with st.sidebar:
 
     st.checkbox("Research Agent", True)
     st.checkbox("Coder Agent", True)
-    st.checkbox("Critic Agent", True)
-    st.checkbox("Memory Agent", True)
+    st.checkbox("Data Analysis Agent", True)
+    st.checkbox("Document Agent", True)
+    st.checkbox("Email Agent", True)
+    st.checkbox("Planning Agent", True)
 
     st.button("Clear Chat")
 
