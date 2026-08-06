@@ -16,12 +16,104 @@ from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_core.documents import Document
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import InMemorySaver
+import json
+import time
+import glob
+import numpy as np
+from typing import List, Dict, Tuple
+from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
+import faiss
+
+#----------------------------
+
+embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
+
+FOLDER_PATH = "/workspaces/Multi-Agent/"
+
+txt_files = sorted(glob.glob(os.path.join(FOLDER_PATH, "**", "*.txt"), recursive=True))
+print(f"Found {len(txt_files)} .txt files")
+for f in txt_files[:10]:
+    print(" -", f)
+
+def load_txt_folder(folder_path: str) -> List[Dict]:
+
+    file_paths = sorted(glob.glob(os.path.join(folder_path, "**", "*.txt"), recursive=True))
+    documents = []
+    for path in file_paths:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                text = f.read()
+        except UnicodeDecodeError:
+            # fallback for files not saved as utf-8
+            with open(path, "r", encoding="latin-1") as f:
+                text = f.read()
+
+        if text.strip():
+            documents.append({"filename": os.path.basename(path), "text": text})
+
+    return documents
 
 
+documents = load_txt_folder(FOLDER_PATH)
+print(f"✅ Loaded {len(documents)} documents")
+
+def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
+
+    text = " ".join(text.split()) 
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunk = text[start:end].strip()
+        if chunk:
+            chunks.append(chunk)
+        start += chunk_size - overlap
+    return chunks
+
+all_chunks = []
+chunk_sources = []  
+
+for doc in documents:
+    doc_chunks = chunk_text(doc["text"], chunk_size=800, overlap=150)
+    all_chunks.extend(doc_chunks)
+    chunk_sources.extend([doc["filename"]] * len(doc_chunks))
+
+print(f"Total chunks created: {len(all_chunks)}")
+
+chunk_embeddings = embedding_model.encode(all_chunks, show_progress_bar=True)
+chunk_embeddings = np.array(chunk_embeddings).astype("float32")
+
+embedding_dim = chunk_embeddings.shape[1]
+index = faiss.IndexFlatL2(embedding_dim)
+index.add(chunk_embeddings)
+
+print(f"✅ Index built successfully")
+print(f"Vectors stored: {index.ntotal}")
+print(f"Vector dimension: {embedding_dim}")
+
+def retrieve_chunks(query: str, top_k: int = 3) -> List[Dict]:
+
+    query_embedding = embedding_model.encode([query]).astype("float32")
+    distances, indices = index.search(query_embedding, top_k)
+
+    results = []
+    for rank, idx in enumerate(indices[0]):
+        results.append({
+            "chunk": all_chunks[idx],
+            "source_file": chunk_sources[idx],
+            "distance": float(distances[0][rank])
+        })
+    return results
+
+
+
+#----------------------------
+apikey = input("Enter the api key: ")
 # -----------------------------
 # Model
 # -----------------------------.
-os.environ["GROQ_API_KEY"] = "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"
+os.environ["GROQ_API_KEY"] = apikey
 model = ChatGroq(
     api_key=os.environ["GROQ_API_KEY"],
     model="llama-3.3-70b-versatile",
@@ -86,10 +178,11 @@ def coding_node(state: MultiAgentState):
         ),
         HumanMessage(
             content=f"""
-            Draft:
+            Draft/Prompt:
             {state['draft']}
+            
             Feedback:
-            {state['review_feedback']}
+            {state.get('review_feedback', '')}
             """
         )
     ])
@@ -159,31 +252,42 @@ def email_node(state: MultiAgentState):
     }
 
 def document_node(state: MultiAgentState):
+    print("document agent with RAG")
 
-    print("document")
+    query_text = state.get("draft") if state.get("draft") else state.get("topic", "")
+
+    retrieved_chunks = retrieve_chunks(query_text, top_k=3)
+    
+    context_text = "\n\n".join(
+        [f"[Source: {c['source_file']}]: {c['chunk']}" for c in retrieved_chunks]
+    )
 
     response = model.invoke([
         SystemMessage(
             content="""
-            Trnsform the text into a document.
-            Return only the document.
+            You are a document creation assistant.
+            Transform the provided text into a well-structured document using ONLY 
+            the provided context and draft text. 
+            If feedback is provided, incorporate it into the document structure.
+            Return ONLY the transformed document.
             """
         ),
         HumanMessage(
             content=f"""
+            Context from Documents:
+            {context_text}
+
             Draft:
-
-            {state['draft']}
-
+            {state.get('draft', '')}
 
             Feedback:
-
-            {state['review_feedback']}
+            {state.get('review_feedback', '')}
             """
         )
     ])
 
     return {
+        "draft": response.content,
         "final_output": response.content,
         "status": "transformed"
     }
@@ -232,7 +336,15 @@ def supervisor_node(state: MultiAgentState):
             """
         )
     ])
-    return {"draft": state["research_findings"], "status": response.content.strip().lower()}
+    category = response.content.strip().lower()
+    
+    # Preserve research findings if present; otherwise fall back to the initial topic
+    draft_content = state["research_findings"] if state.get("research_findings") else state["topic"]
+    
+    return {
+        "draft": draft_content, 
+        "status": category
+    }
 
 
 def route_task(state: MultiAgentState):
@@ -278,7 +390,7 @@ graph = builder.compile(
 )
 
 
-topic = "give me a python code to implement a simple hello world prompt"
+topic = "In the document, was the discovery of a single brass key inside an abandoned typewriter expected?"
 
 
 result = graph.invoke(
