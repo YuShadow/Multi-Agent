@@ -54,35 +54,3 @@ def get_agent_response(agent_name: str, prompt: str, api_key: str, temperature: 
     ])
     return str(response.content)
 
-def automatic_agent_response(prompt: str, api_key: str, temperature: float = 0.7) -> str:
-    model = build_groq_model(api_key, temperature)
-
-    response = model.invoke([
-        SystemMessage(content="""
-You are a supervisor responsible for routing user requests.
-
-Choose the most appropriate agent from:
-
-- Research Agent
-- Coding Agent
-- Data Analyst
-- Document Agent
-- Email Agent
-- Planning Agent
-
-Return ONLY the exact agent name.
-"""),
-        HumanMessage(content=prompt),
-    ])
-
-    selected_agent = response.content.strip()
-
-    if selected_agent not in AGENT_OPTIONS:
-        raise ValueError(f"Invalid agent selected: {selected_agent}")
-
-    return get_agent_response(
-        selected_agent,
-        prompt,
-        api_key,
-        temperature
-    )
