@@ -54,35 +54,77 @@ def get_agent_response(agent_name: str, prompt: str, api_key: str, temperature: 
     ])
     return str(response.content)
 
-def automatic_agent_response(prompt: str, api_key: str, temperature: float = 0.7) -> str:
+
+# -----------------------------
+# Automatic agent routing
+# -----------------------------
+# Maps the classifier's raw category word back to an AGENT_OPTIONS entry.
+# Both underscore and space variants are accepted on purpose - this is the
+# exact mismatch that silently broke routing in LangGraph.py, so the mapping
+# here is deliberately tolerant instead of expecting one exact spelling.
+CATEGORY_TO_AGENT = {
+    "research": "Research Agent",
+    "coding": "Coding Agent",
+    "code": "Coding Agent",
+    "data_analysis": "Data Analyst",
+    "data analysis": "Data Analyst",
+    "email": "Email Agent",
+    "document": "Document Agent",
+    "planning": "Planning Agent",
+    "plan": "Planning Agent",
+}
+
+CLASSIFIER_SYSTEM_PROMPT = (
+    "You are a routing classifier for a multi-agent assistant. Read the user's "
+    "request and choose exactly one category that best matches it from this "
+    "list: research, coding, data_analysis, email, document, planning. "
+    "Reply with ONLY the category word, lowercase, nothing else."
+)
+
+
+def classify_agent(prompt: str, api_key: str) -> str:
+    """Classify a prompt into one of AGENT_OPTIONS. Uses temperature=0 for a
+    consistent, deterministic-as-possible classification. Falls back to
+    'Research Agent' if the model's reply doesn't match a known category
+    (rather than raising), so a routing hiccup never crashes the app -
+    the same failure mode that broke LangGraph.py's routing."""
+    model = build_groq_model(api_key, temperature=0.0)
+    response = model.invoke([
+        SystemMessage(content=CLASSIFIER_SYSTEM_PROMPT),
+        HumanMessage(content=f"Request:\n\n{prompt}"),
+    ])
+    category = str(response.content).strip().lower().strip(".\"' ")
+    return CATEGORY_TO_AGENT.get(category, "Research Agent")
+
+
+DOCUMENT_AGENT_RAG_SYSTEM_PROMPT = (
+    "You are a documentation specialist. Transform the user's request into a "
+    "well-structured, professional document, grounded ONLY in the provided "
+    "context excerpts from the uploaded PDF. If the context does not contain "
+    "enough information to answer confidently, say so explicitly rather than "
+    "guessing or inventing details."
+)
+
+
+def get_document_agent_response(
+    prompt: str,
+    context_chunks: list[str],
+    api_key: str,
+    temperature: float = 0.7,
+) -> str:
+    """Document Agent variant that grounds its answer in retrieved PDF
+    excerpts instead of relying solely on the model's own knowledge."""
     model = build_groq_model(api_key, temperature)
 
+    if context_chunks:
+        context_text = "\n\n".join(
+            f"[Excerpt {i + 1}]: {chunk}" for i, chunk in enumerate(context_chunks)
+        )
+    else:
+        context_text = "(No relevant excerpts were found in the uploaded PDF.)"
+
     response = model.invoke([
-        SystemMessage(content="""
-You are a supervisor responsible for routing user requests.
-
-Choose the most appropriate agent from:
-
-- Research Agent
-- Coding Agent
-- Data Analyst
-- Document Agent
-- Email Agent
-- Planning Agent
-
-Return ONLY the exact agent name.
-"""),
-        HumanMessage(content=prompt),
+        SystemMessage(content=DOCUMENT_AGENT_RAG_SYSTEM_PROMPT),
+        HumanMessage(content=f"Context from uploaded PDF:\n{context_text}\n\nRequest:\n{prompt}"),
     ])
-
-    selected_agent = response.content.strip()
-
-    if selected_agent not in AGENT_OPTIONS:
-        raise ValueError(f"Invalid agent selected: {selected_agent}")
-
-    return get_agent_response(
-        selected_agent,
-        prompt,
-        api_key,
-        temperature
-    )
+    return str(response.content)
