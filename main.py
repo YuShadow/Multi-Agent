@@ -1,6 +1,6 @@
 import streamlit as st
 
-from SectionProject import AGENT_DESCRIPTIONS, AGENT_OPTIONS, get_agent_response
+from SectionProject import AGENT_DESCRIPTIONS, AGENT_OPTIONS, get_agent_response, automatic_agent_response
 
 st.set_page_config(page_title="Multi-Agent Assistant", page_icon="🤖", layout="wide")
 
@@ -34,9 +34,19 @@ with st.sidebar:
 
     st.info("Your API key is stored only for the current browser session.")
 
-selected_agent = st.selectbox("Choose an agent", AGENT_OPTIONS, index=0)
-st.info(AGENT_DESCRIPTIONS[selected_agent])
+AGENT_SELECTIONS = ["Automatic"] + AGENT_OPTIONS
 
+selected_agent = st.selectbox(
+    "Choose an agent",
+    AGENT_SELECTIONS,
+    index=0
+)
+
+if selected_agent == "Automatic":
+    st.info("🤖 Automatic mode: the supervisor will choose the best agent.")
+else:
+    st.info(AGENT_DESCRIPTIONS[selected_agent])
+    
 with st.form("agent_prompt_form", clear_on_submit=True):
     prompt = st.text_area(
         "Prompt",
@@ -53,17 +63,24 @@ if submitted:
     else:
         with st.spinner(f"Running {selected_agent}..."):
             try:
-                response = get_agent_response(
+                if selected_agent == "Automatic":
+                    response = automatic_agent_response(
+                    prompt,
+                    st.session_state.groq_api_key,
+                    temperature=temperature,
+                    )
+                else:
+                    response = get_agent_response(
                     selected_agent,
                     prompt,
                     st.session_state.groq_api_key,
                     temperature=temperature,
-                )
-            except Exception as exc:
-                st.error(f"The request failed: {exc}")
-            else:
-                st.session_state.messages.append({"role": "user", "content": prompt})
-                st.session_state.messages.append({"role": "assistant", "content": response})
+                    )
+                except Exception as exc:
+                    st.error(f"The request failed: {exc}")
+                else:
+                    st.session_state.messages.append({"role": "user", "content": prompt})
+                    st.session_state.messages.append({"role": "assistant", "content": response})
 
 st.divider()
 
