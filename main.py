@@ -15,9 +15,6 @@ st.title("🤖 Multi-Agent AI Assistant")
 st.caption("Choose an agent, enter a prompt, and send it using your Groq API key.")
 
 
-# -----------------------------
-# Cached resources / session state
-# -----------------------------
 @st.cache_resource(show_spinner="Loading embedding model (first run only)...")
 def load_embedding_model():
     from sentence_transformers import SentenceTransformer
@@ -133,9 +130,6 @@ with st.sidebar:
     st.info("Your API key is stored only for the current browser session.")
 
 
-# -----------------------------
-# Agent selection area
-# -----------------------------
 if pdf_active:
     selected_agent = "Document Agent"
     st.info(
@@ -143,7 +137,7 @@ if pdf_active:
         f"automatically be handled by the **Document Agent**, grounded in this file."
     )
 elif auto_detect:
-    selected_agent = None  # decided per-prompt, after the user submits
+    selected_agent = None  
     st.info("🎯 **Auto-detect is on** — the right agent will be picked based on what you type below.")
 else:
     selected_agent = st.selectbox("Choose an agent", AGENT_OPTIONS, index=0)
