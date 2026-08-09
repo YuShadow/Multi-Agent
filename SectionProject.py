@@ -76,11 +76,6 @@ CLASSIFIER_SYSTEM_PROMPT = (
 
 
 def classify_agent(prompt: str, api_key: str) -> str:
-    """Classify a prompt into one of AGENT_OPTIONS. Uses temperature=0 for a
-    consistent, deterministic-as-possible classification. Falls back to
-    'Research Agent' if the model's reply doesn't match a known category
-    (rather than raising), so a routing hiccup never crashes the app -
-    the same failure mode that broke LangGraph.py's routing."""
     model = build_groq_model(api_key, temperature=0.0)
     response = model.invoke([
         SystemMessage(content=CLASSIFIER_SYSTEM_PROMPT),
