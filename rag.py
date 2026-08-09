@@ -1,12 +1,3 @@
-"""
-RAG utilities for the Document Agent.
-
-Unlike LangGraph.py's original approach (which expected a local folder of
-.txt files that were never committed to the repo), this module builds its
-index at runtime from whatever PDF the user uploads in the Streamlit app.
-No local files, no hardcoded paths - the corpus is always exactly one
-user-supplied PDF.
-"""
 from typing import List
 
 import numpy as np
@@ -16,9 +7,6 @@ from sentence_transformers import SentenceTransformer
 
 
 def extract_pdf_text(file) -> str:
-    """Extract text from an uploaded PDF (file-like object, e.g. from
-    st.file_uploader). Pages with no extractable text (e.g. scanned
-    images with no OCR layer) are silently skipped."""
     reader = PdfReader(file)
     pages = []
     for page in reader.pages:
@@ -29,8 +17,6 @@ def extract_pdf_text(file) -> str:
 
 
 def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str]:
-    """Split text into overlapping fixed-size chunks. Same scheme used in
-    the original LangGraph.py prototype, kept consistent here."""
     text = " ".join(text.split())
     chunks = []
     start = 0
@@ -44,13 +30,6 @@ def chunk_text(text: str, chunk_size: int = 800, overlap: int = 150) -> List[str
 
 
 class PDFIndex:
-    """In-memory FAISS index over a single uploaded PDF's chunks.
-
-    A fresh instance is built per uploaded file (see main.py) rather than
-    accumulating documents across uploads, since the goal is "answer from
-    this PDF," not a persistent multi-document corpus.
-    """
-
     def __init__(self, embedding_model: SentenceTransformer):
         self.embedding_model = embedding_model
         self.chunks: List[str] = []
@@ -70,9 +49,6 @@ class PDFIndex:
         self.index.add(embeddings)
 
     def search(self, query: str, top_k: int = 3) -> List[str]:
-        """Return the top_k most relevant chunks for a query. Returns an
-        empty list if the index hasn't been built or has no chunks -
-        callers should handle that gracefully rather than assume results."""
         if self.index is None or not self.chunks:
             return []
 
