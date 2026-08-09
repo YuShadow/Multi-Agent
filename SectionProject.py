@@ -55,13 +55,6 @@ def get_agent_response(agent_name: str, prompt: str, api_key: str, temperature: 
     return str(response.content)
 
 
-# -----------------------------
-# Automatic agent routing
-# -----------------------------
-# Maps the classifier's raw category word back to an AGENT_OPTIONS entry.
-# Both underscore and space variants are accepted on purpose - this is the
-# exact mismatch that silently broke routing in LangGraph.py, so the mapping
-# here is deliberately tolerant instead of expecting one exact spelling.
 CATEGORY_TO_AGENT = {
     "research": "Research Agent",
     "coding": "Coding Agent",
